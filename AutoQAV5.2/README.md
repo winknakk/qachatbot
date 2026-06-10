@@ -1,305 +1,169 @@
-# 🤖 Chatbot QA Automation
+# 🤖 BotBot Auto QA v8.6 (Chatbot QA Automation)
 
-Automated chatbot testing system built with **Playwright** + **Node.js** + **Google Docs API**.
+ระบบทดสอบ Chatbot อัตโนมัติที่พัฒนาด้วย **Puppeteer**, **Node.js** และ **Google APIs (Sheets & Docs)**
+ถูกออกแบบมาให้สามารถอ่าน Test Cases จาก Google Sheets, นำไปทดสอบถาม-ตอบกับ Chatbot จริงในเบราว์เซอร์, บันทึกภาพหน้าจอ (Screenshots), ตรวจสอบความถูกต้องของคำตอบ (Validation/Similarity), และอัปเดตผลลัพธ์กลับลงไปใน Google Sheets และ Google Docs ได้แบบครบวงจร
 
 ---
 
-## 📁 Project Structure
+## 🌟 ฟีเจอร์เด่น (Key Features)
 
-```
-chatbot-qa-automation/
+- **Interactive CLI Menu (`run_config.js`)**: เมนูหลักที่ช่วยให้ใช้งานได้ง่ายสุดๆ ไม่ต้องนั่งจำคำสั่ง
+- **Profiles System**: บันทึกการตั้งค่าแยกตามโปรเจกต์หรือรอบการเทสต์ได้ (จัดการผ่านเมนู)
+- **Target Separation**: รองรับการแยกไฟล์อ่านข้อมูล (Source) และไฟล์เขียนผลลัพธ์ (Target) ออกจากกัน ป้องกันข้อมูลต้นฉบับเสียหาย
+- **Smart Image Syncing**: จับภาพหน้าจอ จัดหมวดหมู่ตามสถานะ (Pass/Partial/Fail) และชื่อเรื่องอัตโนมัติ พร้อมระบบอัปโหลดขึ้น Google Drive / ImgBB และแปะลิงก์กลับไปที่ Sheets/Docs
+- **Auto-Resume (Checkpoints)**: บันทึกความคืบหน้าทุกๆ ข้อ ถ้าระบบค้างหรือเน็ตหลุด สามารถรันต่อจากข้อล่าสุดได้ทันที
+- **Data Consolidation**: ระบบตรวจสอบ (Validate) และรวมผลลัพธ์ (Consolidate) จากหลายแหล่ง (JSON, Sheets, Docs) เข้าด้วยกันอย่างอัจฉริยะ
+
+---
+
+## 📁 โครงสร้างโปรเจค (Project Structure)
+
+```text
+BotBot_AutoQAV_8_6_69/
+├── run_config.js             ← 🏠 เมนูหลักของโปรแกรม (Entry Point)
+├── validate.js               ← สคริปต์ตรวจสอบความตรงกันของข้อมูล (JSON vs Sheets vs Docs)
+├── consolidate.js            ← สคริปต์รวมผลลัพธ์จาก 3 แหล่งสร้างเป็น master_results.json
+├── write_to_sheets.js        ← สคริปต์สำหรับนำผลลัพธ์เขียนกลับลง Google Sheets
+├── write_to_docs.js          ← สคริปต์สำหรับนำผลลัพธ์เขียนกลับลง Google Docs
 ├── src/
-│   ├── index.js                  ← Main entry point
-│   ├── config/
-│   │   └── index.js              ← .env loader & config object
-│   ├── modules/
-│   │   ├── docsClient.js         ← Google Docs table read/write + colour
-│   │   ├── browserController.js  ← Playwright session & chatbot interaction
-│   │   ├── classifier.js         ← Similarity scoring & PASS/PARTIAL/FAIL logic
-│   │   ├── screenshotHandler.js  ← Screenshot capture & folder routing
-│   │   ├── testRunner.js         ← Retry orchestration per test case
-│   │   └── reporter.js           ← Console summary + HTML report
-│   └── utils/
-│       └── logger.js             ← Winston structured logger
+│   ├── index.js              ← 🤖 Core Runner (ตัวสั่งเบราว์เซอร์รัน Auto QA)
+│   ├── config/index.js       ← ตัวจัดการค่า Configuration จาก .env
+│   └── modules/              ← คลาสและเครื่องมือย่อย (Browser, Sheets/Docs Client, Image Sync)
 ├── credentials/
-│   └── google-service-account.json   ← ⚠ NOT committed to git
+│   └── google-service-account.json  ← คีย์สำหรับต่อ Google API (ต้องสร้างเอง)
+├── profiles/                 ← เก็บไฟล์ .json ของแต่ละ Profile
+├── logs/                     ← เก็บไฟล์ Log และ Checkpoint (progress_*.json) เพื่อ Resume
+├── output/                   ← เก็บไฟล์ผลลัพธ์ (master_results, pass_results, ฯลฯ)
 ├── screenshots/
-│   ├── pass/                     ← (unused — screenshots only for PARTIAL/FAIL)
-│   ├── partial/
-│   └── fail/
-├── logs/
-│   ├── combined.log
-│   ├── error.log
-│   └── run_YYYYMMDD_HHmmss.log   ← Per-run log
-├── reports/
-│   └── report_YYYYMMDD_HHmmss.html
-├── .env                          ← Your config (copy from .env.example)
-├── .env.example                  ← Template
-├── .gitignore
-└── package.json
+│   ├── pass/[Topic]/         ← ภาพหน้าจอข้อที่ผ่าน
+│   ├── partial/[Topic]/      ← ภาพหน้าจอข้อที่ผ่านบางส่วน
+│   └── fail/[Topic]/         ← ภาพหน้าจอข้อที่ไม่ผ่าน
+├── .env                      ← ไฟล์ตั้งค่าหลักของระบบ
+└── .env.run                  ← (System generated) เก็บ Active Profile ปัจจุบัน
 ```
 
 ---
 
-## ⚙️ Prerequisites
+## 🚀 การติดตั้งและเตรียมความพร้อม
 
-| Tool | Version |
-|------|---------|
-| Node.js | ≥ 18.0.0 |
-| npm | ≥ 9.0.0 |
-| Google Account | with Docs API enabled |
-| VPN | Connected manually before running |
-
----
-
-## 🚀 Step-by-Step Installation Guide
-
-### Step 1 — Clone / download the project
-
-```bash
-cd ~/projects
-# If using git:
-git clone <your-repo-url> chatbot-qa-automation
-cd chatbot-qa-automation
-
-# Or just navigate to the folder if you downloaded it manually
-```
-
----
-
-### Step 2 — Install Node.js dependencies
-
+### 1. ติดตั้ง Dependencies
 ```bash
 npm install
 ```
 
----
+### 2. เตรียม Google Service Account
+1. สร้างโปรเจคใน Google Cloud Console
+2. เปิดใช้งาน **Google Sheets API** และ **Google Docs API** (และ Drive API ถ้าใช้)
+3. สร้าง Service Account และดาวน์โหลดไฟล์ JSON Key
+4. นำไฟล์ JSON มาวางในโฟลเดอร์ `credentials/` 
+5. **อย่าลืม:** นำ Email ของ Service Account ไปแชร์ (Editor) ในไฟล์ Sheets และ Docs ที่ต้องการใช้งาน
 
-### Step 3 — Install Playwright browser (Chromium only)
-
-```bash
-npm run install:browsers
-# This downloads the Chromium binary Playwright needs (~170 MB)
-```
-
----
-
-### Step 4 — Set up Google Docs API
-
-#### 4a. Enable the Docs API
-1. Go to [https://console.cloud.google.com](https://console.cloud.google.com)
-2. Create a new project (or select existing)
-3. Navigate to **APIs & Services → Library**
-4. Search **"Google Docs API"** → Click **Enable**
-
-#### 4b. Create a Service Account
-1. Go to **APIs & Services → Credentials**
-2. Click **Create Credentials → Service Account**
-3. Name it (e.g. `chatbot-qa-bot`) → Click **Done**
-4. Click the service account → **Keys tab → Add Key → JSON**
-5. Download the JSON file
-
-#### 4c. Save the key file
-```bash
-mkdir -p credentials
-# Move the downloaded JSON to:
-mv ~/Downloads/your-key-file.json credentials/google-service-account.json
-```
-
-#### 4d. Share your Google Doc with the service account
-1. Open your Google Doc
-2. Click **Share**
-3. Paste the service account email (looks like: `chatbot-qa-bot@your-project.iam.gserviceaccount.com`)
-4. Set role to **Editor** → Click **Send**
+### 3. ตั้งค่าไฟล์ `.env`
+ก็อปปี้ไฟล์ `.env.example` เป็น `.env` และตั้งค่าต่างๆ ที่สำคัญ (ดูรายละเอียดด้านล่าง)
 
 ---
 
-### Step 5 — Prepare your Google Doc table
+## ⚙️ การตั้งค่า `.env` (Configuration)
 
-The script skips non-table content and reads the first tables with these headers:
-
-| Test case ID | Description | Precondition | Test Steps | Expected Result | Actual Result | Status | Remark |
-|---|---|---|---|---|---|---|---|
-| TRD_AI_001 | เปิดใช้ Chatbot | เข้าเว็บไซต์ | 1. เข้า Website<br>2. คลิก Bubble Chatbot<br>3. ถามด้วยคำถาม<br>- คำถาม<br>4. กดปุ่มส่ง | AI Chatbot สามารถตอบคำถามถูกต้อง<br>- คำตอบที่คาดหวัง | | | |
-
-`Test Steps` is parsed from the text after `-` and stops at the `4.` step in that same cell. `Expected Result` is parsed from the text after `-` until the end of that cell. Results are written to `Remark`, and status is written to `Status`.
-
----
-
-### Step 6 — Configure the .env file
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your actual values:
+คุณสามารถตั้งค่าการดึงและเขียนข้อมูลได้ละเอียดมาก โดยเฉพาะการแยก Source และ Target:
 
 ```dotenv
-# ── Required ──────────────────────────────────────────────────
-# Get this from the document URL: /document/d/THIS_PART/edit
-GOOGLE_DOCUMENT_ID=1WYdfrT_Xz0AirI-OcpDlAhtAjAlkeSqXyGghj-FENKo
+# ── การเชื่อมต่อกับ Chatbot ──
+CHATBOT_URL=https://your-chatbot.com
+CHATBOT_INPUT_SELECTOR=textarea
+CHATBOT_SEND_SELECTOR=button.send
 
-CHATBOT_URL=https://your-chatbot.internal.example.com
+# ── 1. ไฟล์ต้นฉบับสำหรับอ่านคำถาม (SOURCE) ──
+GOOGLE_SPREADSHEET_ID=ไอดีของไฟล์_Sheets_ต้นฉบับ
+GOOGLE_SHEET_NAME="ชื่อแท็บ"
+GOOGLE_DOCUMENT_ID=ไอดีของไฟล์_Docs_ต้นฉบับ
 
-# ── Chatbot selectors (inspect element to find these) ─────────
-CHATBOT_INPUT_SELECTOR=textarea[placeholder*="พิมพ์"]
-CHATBOT_SEND_SELECTOR=button[aria-label="Send"]
-CHATBOT_RESPONSE_SELECTOR=.message.bot-message
-CHATBOT_LOADING_SELECTOR=.typing-dots
+# ── 2. ไฟล์ปลายทางสำหรับอัพผลลัพธ์ (TARGET) ──
+# (ถ้าไม่ใส่ ระบบจะเขียนทับกลับไปที่ Source ด้านบน)
+TARGET_GOOGLE_SPREADSHEET_ID=ไอดีของไฟล์_Sheets_ปลายทาง
+TARGET_GOOGLE_SHEET_NAME="Result_Tab"
 
-# ── Tune these to your chatbot's speed ────────────────────────
-RESPONSE_WAIT_TIMEOUT=30000
-RESPONSE_FINISH_TIMEOUT=90000
-RESPONSE_STABLE_DURATION=3000
-MAX_RETRIES=3
-
-# ── For production: headless=true, for debugging: headless=false
-HEADLESS=true
+# ── ตัวเลือกการอัพโหลดรูปภาพ ──
+GOOGLE_DRIVE_SCREENSHOT_FOLDER_ID=ไอดีโฟลเดอร์ใน_Drive
+# หรือ
+IMGBB_API_KEY=คีย์_ImgBB
 ```
 
 ---
 
-### Step 7 — Find your chatbot's CSS selectors
+## 🎮 วิธีการใช้งาน (Main Menu)
 
-Run this in your browser DevTools console while on the chatbot page:
-
-```javascript
-// 1. Find the input box
-document.querySelector('textarea')       // try this first
-document.querySelector('input[type=text]')
-
-// 2. Find the send button
-document.querySelector('button[type=submit]')
-document.querySelector('button[aria-label*="send" i]')
-
-// 3. Find response bubbles (pick the selector that matches BOT messages only)
-document.querySelectorAll('.message')
-document.querySelectorAll('[class*="bot"]')
-document.querySelectorAll('[class*="response"]')
-```
-
-Copy the selectors into your `.env`.
-
----
-
-## ▶️ Running the Tests
-
-### Connect VPN first
+ทุกอย่างเริ่มต้นที่คำสั่งนี้คำสั่งเดียว:
 ```bash
-# Connect your VPN manually (GlobalProtect, Cisco AnyConnect, etc.)
-# Verify: ping your chatbot's internal IP
+node run_config.js
 ```
+ระบบจะแสดงเมนูหลัก 3 ส่วน ดังนี้:
 
-### Run all test cases
-```bash
-npm test
-```
+### [1] 📁 จัดการ Profiles และสั่งรันบอท (Auto QA)
+ใช้สำหรับสร้างและเลือก **Profile** (เพื่อให้จำค่าต่างๆ เช่น รันข้อไหนถึงข้อไหน, ใช้ Dataset โฟลเดอร์ไหน) โดยไม่ต้องแก้ `.env` ไปมา
+- เมื่อเลือก Profile เสร็จแล้ว ระบบจะให้เลือกโหมดรัน:
+  - **Run Browser (Only)**: ให้เปิดเบราว์เซอร์เทสต์อย่างเดียว เซฟ Checkpoint ไว้ แต่ยังไม่เขียนลง Sheets/Docs ทันที
+  - **Run Browser + Write**: เทสต์เสร็จแล้วเขียนผลลง Sheets/Docs อัตโนมัติทันที
+  - **Dry Run**: รันจำลอง ไม่เปิดเบราว์เซอร์จริง
 
-### Dry run (reads Google Docs but does NOT write results back)
-```bash
-npm run test:dry
+### [2] 🖼️ อัปโหลดและแทรกรูปย้อนหลัง (Sync Images)
+ใช้สำหรับนำรูป Screenshots ที่ระบบถ่ายเก็บไว้ในโฟลเดอร์ `screenshots/` นำไปอัปโหลดขึ้นคลาวด์และแปะลิงก์ลง Sheets/Docs
+1. ระบบจะให้เลือก **Topic (เรื่อง/ชื่อชีต)** ที่มีภาพอยู่
+2. เลือกช่องทางอัปโหลด: **Google Drive** หรือ **ImgBB**
+3. ระบบจะจัดการอัปโหลดและอัปเดตตารางให้เอง
+
+### [3] 🛠️ เครื่องมือจัดการข้อมูล (Validate / Write)
+หมวดหมู่นี้รวมสคริปต์จัดการข้อมูลผลลัพธ์ เหมาะสำหรับใช้ **หลังจาก** ให้บอทรันเทสต์ (แบบ Browser Only) เสร็จแล้ว
+
+#### ย่อย 1: 🔎 Validate Data (`node validate.js`)
+- สแกนข้อมูลจาก 3 แหล่ง (ไฟล์ Checkpoint JSON ใน `logs/`, Google Sheets ต้นฉบับ, Google Docs) 
+- สรุปว่าจำนวนข้อตรงกันไหม คำถามตรงกันกี่เปอร์เซ็นต์ แจ้งเตือนข้อผิดพลาดก่อนที่จะทำการรวมไฟล์
+
+#### ย่อย 2: 📦 Consolidate Data (`node consolidate.js`)
+- รวมผลลัพธ์จาก Checklist JSON, Sheets และ Docs เข้าด้วยกัน
+- สร้างไฟล์ JSON สรุปผลลัพธ์ในโฟลเดอร์ `output/` (แยกเป็น `master_results.json`, `pass_results.json`, `fail_partial_results.json`)
+- มีระบบ Interactive ถามว่าจะดึง Docs/Sheets ไหม หรือจะเปลี่ยน Prefix ชื่อไฟล์ไหม
+
+#### ย่อย 3: 📊 Write to Sheets (`node write_to_sheets.js`)
+- นำไฟล์ JSON จากโฟลเดอร์ `output/` มาเขียนลง Google Sheets ปลายทาง (`TARGET_GOOGLE_SPREADSHEET_ID`)
+- **ฉลาด:** ถ้าชีตปลายทางว่างเปล่า มันจะสร้างตารางและดึงข้อมูลไปวางให้ใหม่ (Append) พร้อมระบายสีแถบ Status ให้อัตโนมัติ
+
+#### ย่อย 4: 📄 Write to Docs (`node write_to_docs.js`)
+- นำไฟล์ JSON ไปเขียนอัปเดตลง Google Docs 
+- มีให้เลือกว่าจะอัปเดตตารางที่มีอยู่แล้ว หรือ รันโหมด `--fresh` เพื่อสร้างตารางสรุปใหม่ต่อท้ายเอกสารเลย
+
+---
+
+## 🔁 Workflow ที่แนะนำ (Best Practices)
+
+1. **เตรียมการ:** ตั้งค่า `.env` ใส่ ID ของ Sheets ต้นฉบับและปลายทางให้เรียบร้อย
+2. **รันเทสต์:** รัน `node run_config.js` ➔ เลือกเมนู `[1]` ➔ ตั้งค่า Profile ➔ เลือกรัน **โหมดที่ 1 (Browser Phase Only)**
+3. **ตรวจสอบ:** เมื่อบอทรันเสร็จ กลับมาที่เมนู ➔ เลือก `[3]` ➔ เลือก `[1] Validate Data` เพื่อดูว่ามีข้อผิดพลาดอะไรไหม
+4. **รวมไฟล์:** ถ้า Validate ผ่าน ให้รัน `[2] Consolidate Data` ต่อทันทีเพื่อสร้าง `master_results.json`
+5. **อัปเดตปลายทาง:** รัน `[3] Write to Sheets` และ `[4] Write to Docs` เพื่อส่งข้อมูลผลลัพธ์ขึ้น Google
+6. **อัปโหลดรูป:** (ทางเลือก) ถ้ารูปยังไม่ขึ้น ให้กลับไปเมนูหลักรัน `[2] Sync Images` 
+
+---
+
+## 📂 โครงสร้างโฟลเดอร์ Screenshots
+
+ภาพหน้าจอจะถูกจัดเก็บและแบ่งหมวดหมู่โดยอัตโนมัติ เพื่อให้ง่ายต่อการตรวจสอบและอัปโหลด:
+```text
+screenshots/
+├── fail/
+│   └── Result_67/        ← แยกตาม TARGET_GOOGLE_SHEET_NAME
+│       └── TC_001_2024...jpg
+├── partial/
+│   └── Result_67/
+└── pass/
+    └── Result_67/
 ```
 
 ---
 
-## 📊 Understanding Results
+## 🛠️ การแก้ไขปัญหาเบื้องต้น (Troubleshooting)
 
-### Classification Logic
-
-| Status | Colour | Condition |
-|--------|--------|-----------|
-| **PASS** | 🟢 Green | Blended similarity ≥ 65% |
-| **PARTIAL** | 🟡 Yellow | 30% ≤ similarity < 65% |
-| **FAIL** | 🔴 Red | similarity < 30% OR fail keyword detected OR timeout |
-
-**Blended similarity** = Dice coefficient (50%) + Jaccard word-overlap (30%) + containment bonus (20%)
-
-**Automatic FAIL keywords** (configurable in `.env`):
-- `ไม่มีข้อมูล`
-- `ไม่พบข้อมูล`
-- `ขออภัย ไม่สามารถ`
-- `sorry i don't know`
-- `i don't have information`
-
-### Retry Logic
-
-```
-Attempt 1 → FAIL/timeout → wait 3s → reload page
-Attempt 2 → FAIL/timeout → wait 3s → reload page
-Attempt 3 → FAIL/timeout → mark as FAIL (no more retries)
-```
-
-Retries are triggered by:
-- Timeout waiting for response
-- Empty response
-- Any unexpected browser error
-
-### Screenshots
-
-| Status | Screenshot taken? | Saved to |
-|--------|------------------|----------|
-| PASS | ❌ No | – |
-| PARTIAL | ✅ Yes | `screenshots/partial/` |
-| FAIL | ✅ Yes | `screenshots/fail/` |
-
----
-
-## 🐛 Troubleshooting
-
-### "Missing required environment variable: GOOGLE_DOCUMENT_ID"
-→ Make sure `.env` file exists and is not `.env.example`
-
-### "Sheet tab 'TestCases' not found"
-→ Change `GOOGLE_SHEET_NAME` in `.env` to match your actual tab name
-
-### "Timeout: no new response appeared"
-→ Increase `RESPONSE_WAIT_TIMEOUT` in `.env`
-→ Check `CHATBOT_RESPONSE_SELECTOR` is correct
-
-### Browser opens but chatbot not loading
-→ Check VPN is connected
-→ Set `HEADLESS=false` to watch the browser
-
-### Google Docs write permission denied
-→ Confirm the service account email has **Editor** access to the document
-
----
-
-## 📝 Logs
-
-```
-logs/
-├── combined.log        ← All logs (DEBUG+)
-├── error.log           ← Errors only
-└── run_20240526_143022.log  ← This specific run
-```
-
----
-
-## 🔧 Advanced Configuration
-
-### Adjusting similarity thresholds
-
-```dotenv
-# Stricter — only very close answers pass
-SIMILARITY_PASS_THRESHOLD=0.80
-SIMILARITY_PARTIAL_THRESHOLD=0.50
-
-# Looser — partial credit is more generous
-SIMILARITY_PASS_THRESHOLD=0.55
-SIMILARITY_PARTIAL_THRESHOLD=0.25
-```
-
-### Adding more fail keywords
-
-```dotenv
-FAIL_KEYWORDS=ไม่มีข้อมูล,ไม่พบข้อมูล,ขออภัย ไม่สามารถ,ระบบขัดข้อง,error occurred
-```
-
-### Debug mode (slow, visible browser)
-
-```dotenv
-HEADLESS=false
-SLOW_MO=300
-```
-# testchatbot
+- **มีปัญหาการเชื่อมต่อ / Bot ไม่เปิด:** ตรวจสอบว่าเสียบ VPN หรือยัง
+- **ชีตพัง / โดนเขียนทับ:** แนะนำให้ใช้ตัวแปร `TARGET_GOOGLE_SPREADSHEET_ID` แยกไฟล์ต้นฉบับและผลลัพธ์เสมอ
+- **พบปัญหาไม่เจอคอลัมน์:** เช็คชื่อคอลัมน์ใน `.env` เช่น `SHEET_COL_QUESTION=A`, `SHEET_COL_EXPECTED=B` ว่าตรงกับตารางของคุณหรือไม่
+- **ค้างตอนดึง Checkpoint:** หากต้องการบังคับรันใหม่หมด ให้เข้าไปลบไฟล์ `progress_...json` ในโฟลเดอร์ `logs/` ทิ้ง
