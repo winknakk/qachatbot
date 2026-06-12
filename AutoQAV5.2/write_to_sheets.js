@@ -84,6 +84,16 @@ function norm(text) {
     .trim();
 }
 
+function formatTestIdForSheet(testId) {
+  if (!testId) return '';
+  const m = testId.trim().match(/^TRD_AI_(\d+)$/i);
+  if (m) {
+    const num = parseInt(m[1], 10);
+    return `TRD_AI_${String(num).padStart(2, '0')}`;
+  }
+  return testId;
+}
+
 // ─────────────────────────────────────────────────────────────
 // MAIN
 // ─────────────────────────────────────────────────────────────
@@ -101,6 +111,35 @@ async function main() {
   if (!fs.existsSync(inputFile) && prefixStr && !INPUT.startsWith(prefixStr)) {
     inputFile = path.join(OUTPUT_DIR, `${prefixStr}${INPUT}.json`);
   }
+
+  // Fallback to in_coin_docs_data if master_results is not found
+  if (!fs.existsSync(inputFile) && INPUT === 'master_results') {
+    const fallbackFile = path.join(OUTPUT_DIR, 'in_coin_docs_data.json');
+    if (fs.existsSync(fallbackFile)) {
+      console.log(`ℹ️ ไม่พบ ${INPUT}.json ในโฟลเดอร์ output, จะดึงข้อมูลจาก in_coin_docs_data.json แทน`);
+      INPUT = 'in_coin_docs_data';
+      inputFile = fallbackFile;
+    }
+  }
+
+  // Try parsing directly as relative path or logs path if still not found
+  if (!fs.existsSync(inputFile)) {
+    const directPath = path.resolve(__dirname, INPUT);
+    const logsPath = path.resolve(__dirname, 'logs', INPUT);
+    const logsJsonPath = path.resolve(__dirname, 'logs', `${INPUT}.json`);
+    const outputJsonPath = path.join(OUTPUT_DIR, `${INPUT}.json`);
+    
+    if (fs.existsSync(directPath)) {
+      inputFile = directPath;
+    } else if (fs.existsSync(logsPath)) {
+      inputFile = logsPath;
+    } else if (fs.existsSync(logsJsonPath)) {
+      inputFile = logsJsonPath;
+    } else if (fs.existsSync(outputJsonPath)) {
+      inputFile = outputJsonPath;
+    }
+  }
+
   if (!fs.existsSync(inputFile)) {
     console.error(`❌ ไม่พบ input file: ${inputFile}`);
     console.error(`   รัน node consolidate.js ก่อน`);
@@ -109,9 +148,192 @@ async function main() {
 
   console.log(`  โหลดข้อมูลจาก: ${inputFile}`);
   const raw = JSON.parse(fs.readFileSync(inputFile, 'utf8'));
-  let entries = Array.isArray(raw.entries)
-    ? raw.entries
-    : Object.values(raw.entries ?? {});
+  
+  let entries = [];
+  if (raw && raw.completed) {
+    console.log('  ตรวจพบไฟล์ Checkpoint — กำลังดึงข้อมูลผลลัพธ์...');
+    entries = Object.entries(raw.completed).map(([testId, result]) => ({
+      testId,
+      ...result
+    }));
+  } else if (Array.isArray(raw)) {
+    entries = raw;
+  } else if (raw && typeof raw === 'object') {
+    entries = Array.isArray(raw.entries)
+      ? raw.entries
+      : Object.values(raw.entries ?? {});
+  }
+
+  // Normalize entries to standard keys
+  entries = entries.map(entry => {
+    const normEntry = { ...entry };
+    normEntry.testId = entry.testId || entry.newId || entry['Test ID'] || '';
+    normEntry.question = entry.question || entry.Question || '';
+    normEntry.expected = entry.expected || entry.Expected || '';
+    normEntry.actual = entry.actual ?? entry.Actual ?? entry.actualResult ?? entry.remark ?? '';
+    normEntry.status = entry.status ?? entry.Status ?? '';
+    normEntry.timestamp = entry.timestamp ?? entry.Timestamp ?? '';
+    normEntry.screenshotPath = entry.screenshotPath ?? entry.Screenshot ?? entry.imageRenamed ?? '';
+    return normEntry;
+  });
+
+  const isDocData = INPUT.includes('docs_data');
+
+  if (isDocData) {
+    console.log('  Mode: ดึงข้อมูลและอัปเดตช่องที่ว่าง (คำตอบ/Test ID/Actual/Status) จาก Docs Data');
+    if (DRY_RUN) console.log('\n  ⚠️  DRY RUN mode — แสดงความคืบหน้าแต่ไม่บันทึกลง Google Sheets จริง');
+
+    console.log('  กำลังเชื่อมต่อ Google Sheets...');
+    const sheetsClient = new SheetsClient();
+    await sheetsClient.init();
+
+    console.log('  กำลังโหลดข้อมูลจาก Google Sheets (Target) เพื่อจับคู่ Row...');
+    const sheetCases = await sheetsClient.getTestCases(true);
+    console.log(`  โหลดได้ ${sheetCases.length} รายการจาก Google Sheets`);
+
+    const testIdToCase = new Map();
+    const questionToCase = new Map();
+    for (const sc of sheetCases) {
+      if (sc.testId) {
+        const normId = normalizeTestId(sc.testId);
+        if (!testIdToCase.has(normId)) {
+          testIdToCase.set(normId, sc);
+        }
+      }
+      if (sc.question) {
+        const normQ = norm(sc.question);
+        if (!questionToCase.has(normQ)) {
+          questionToCase.set(normQ, sc);
+        }
+      }
+    }
+
+    const updates = [];
+    const appends = [];
+    let testIdUpdates = 0;
+    let expectedUpdates = 0;
+    let actualUpdates = 0;
+    let statusUpdates = 0;
+
+    for (const entry of entries) {
+      let matched = null;
+      if (entry.testId) {
+        const normalizedJsonId = normalizeTestId(entry.testId);
+        if (testIdToCase.has(normalizedJsonId)) {
+          matched = testIdToCase.get(normalizedJsonId);
+        }
+      }
+      if (!matched && entry.question) {
+        const qNorm = norm(entry.question);
+        if (questionToCase.has(qNorm)) {
+          matched = questionToCase.get(qNorm);
+        }
+      }
+
+      const targetTestId = formatTestIdForSheet(entry.testId);
+      const targetExpected = entry.expected || '';
+      const targetActual = entry.actual || '';
+      const targetStatus = entry.status || '';
+
+      if (matched) {
+        let updateRow = false;
+        let newTestId = matched.testId;
+        let newExpected = matched.expected;
+        let newActual = matched.actual;
+        let newStatus = matched.status;
+
+        if ((!matched.testId || matched.testId.startsWith('TC_')) && targetTestId && targetTestId !== matched.testId) {
+          newTestId = targetTestId;
+          testIdUpdates++;
+          updateRow = true;
+        }
+        if (!matched.expected && targetExpected) {
+          newExpected = targetExpected;
+          expectedUpdates++;
+          updateRow = true;
+        }
+        if (!matched.actual && targetActual) {
+          newActual = targetActual;
+          actualUpdates++;
+          updateRow = true;
+        }
+        if (!matched.status && targetStatus) {
+          newStatus = targetStatus;
+          statusUpdates++;
+          updateRow = true;
+        }
+
+        if (updateRow) {
+          updates.push({
+            range: `${process.env.GOOGLE_SHEET_NAME || 'In_coin'}!A${matched.rowIndex}:E${matched.rowIndex}`,
+            values: [[newTestId, matched.question, newExpected, newActual, newStatus]],
+            rowIndex: matched.rowIndex,
+            status: newStatus
+          });
+        }
+      } else {
+        appends.push([targetTestId, entry.question, targetExpected, targetActual, targetStatus]);
+      }
+    }
+
+    console.log(`\n  สรุปการทำงาน (Docs Data Mode):`);
+    console.log(`    - มีข้อที่ต้องอัปเดต (ข้อมูลที่ขาดหาย): ${updates.length} แถว (Test ID: ${testIdUpdates}, คำตอบ: ${expectedUpdates}, ผลลัพธ์: ${actualUpdates}, สถานะ: ${statusUpdates})`);
+    console.log(`    - มีข้อใหม่ที่จะต้องเพิ่ม (Append): ${appends.length} แถว`);
+
+    if (updates.length === 0 && appends.length === 0) {
+      console.log('  ✅ ไม่จำเป็นต้องอัปเดต ข้อมูลทุกช่องครบถ้วนอยู่แล้ว!');
+      return;
+    }
+
+    if (DRY_RUN) {
+      console.log('\n  [DRY RUN] โหมดทดสอบ (ยังไม่เขียนจริง)');
+      return;
+    }
+
+    if (updates.length > 0) {
+      console.log('  กำลังเขียนข้อมูลอัปเดตลง Google Sheets...');
+      await sheetsClient.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: spreadsheetId,
+        requestBody: {
+          valueInputOption: 'USER_ENTERED',
+          data: updates.map(u => ({ range: u.range, values: u.values })),
+        },
+      });
+      console.log('  ✓ อัปเดตข้อมูลสำเร็จ');
+
+      // ระบายสีช่องสถานะที่อัปเดตใหม่
+      const colorRequests = updates
+        .filter(u => u.status)
+        .map(u => sheetsClient._buildColorRequest(u.rowIndex, u.status.toUpperCase()))
+        .filter(Boolean);
+
+      if (colorRequests.length > 0) {
+        console.log(`  กำลังระบายสีสถานะสำหรับ ${colorRequests.length} ช่อง...`);
+        await sheetsClient.sheets.spreadsheets.batchUpdate({
+          spreadsheetId: spreadsheetId,
+          requestBody: { requests: colorRequests },
+        });
+        console.log('  ✓ ระบายสีสำเร็จ');
+      }
+    }
+
+    if (appends.length > 0) {
+      console.log('  กำลังเพิ่มข้อมูลใหม่ (Append)...');
+      await sheetsClient.sheets.spreadsheets.values.append({
+        spreadsheetId: spreadsheetId,
+        range: `${process.env.GOOGLE_SHEET_NAME || 'In_coin'}!A2`,
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: {
+          values: appends,
+        },
+      });
+      console.log('  ✓ เพิ่มข้อมูลใหม่สำเร็จ');
+    }
+
+    console.log('  ✅ บันทึกข้อมูลเรียบร้อยแล้ว!');
+    return;
+  }
 
   // Filter by status if requested
   if (FILTER) {
@@ -151,10 +373,16 @@ async function main() {
   for (const sc of sheetCases) {
     if (sc.rowIndex) rowIndexToCase.set(sc.rowIndex, sc);
     if (sc.testId) {
-      testIdToCase.set(normalizeTestId(sc.testId), sc);
+      const normId = normalizeTestId(sc.testId);
+      if (!testIdToCase.has(normId)) {
+        testIdToCase.set(normId, sc);
+      }
     }
     if (sc.question) {
-      questionToCase.set(norm(sc.question), sc);
+      const normQ = norm(sc.question);
+      if (!questionToCase.has(normQ)) {
+        questionToCase.set(normQ, sc);
+      }
     }
   }
 

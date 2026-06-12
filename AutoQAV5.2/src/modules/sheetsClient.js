@@ -100,12 +100,12 @@ class SheetsClient {
     const sname = useTargetSheet && config.google.targetSheetName ? config.google.targetSheetName : config.google.sheetName;
 
     // หา column ซ้ายสุดและขวาสุดที่ต้องอ่าน
-    const readCols  = [cols.testId, cols.question, cols.expected].filter(Boolean);
+    const readCols  = [cols.testId, cols.question, cols.expected, cols.actual, cols.status, cols.timestamp, cols.screenshot].filter(Boolean);
     const sortedCols = readCols
       .map(c => c.toUpperCase())
       .sort();
     const startCol = sortedCols[0] || 'A';
-    const endCol   = sortedCols[sortedCols.length - 1] || 'C';
+    const endCol   = sortedCols[sortedCols.length - 1] || 'G';
 
     const range = a1Range(sname, startCol, startRow, endCol, 10000);
 
@@ -122,6 +122,11 @@ class SheetsClient {
     const testIdIdx  = cols.testId ? colToIndex(cols.testId) - baseIdx : -1;
     const questionIdx = colToIndex(cols.question) - baseIdx;
     const expectedIdx = colToIndex(cols.expected) - baseIdx;
+    const actualIdx  = cols.actual ? colToIndex(cols.actual) - baseIdx : -1;
+    const statusIdx  = cols.status ? colToIndex(cols.status) - baseIdx : -1;
+    const timestampIdx = cols.timestamp ? colToIndex(cols.timestamp) - baseIdx : -1;
+    const screenshotCol = cols.screenshot ?? cols.screenshotPath;
+    const screenshotIdx = screenshotCol ? colToIndex(screenshotCol) - baseIdx : -1;
 
     const testCases = rows
       .map((row, idx) => {
@@ -139,6 +144,10 @@ class SheetsClient {
           testId:    testId,
           question:  questionVal,
           expected:  expectedVal,
+          actual:    actualIdx >= 0 ? (row[actualIdx]?.trim() ?? '') : '',
+          status:    statusIdx >= 0 ? (row[statusIdx]?.trim() ?? '') : '',
+          timestamp: timestampIdx >= 0 ? (row[timestampIdx]?.trim() ?? '') : '',
+          screenshotPath: screenshotIdx >= 0 ? (row[screenshotIdx]?.trim() ?? '') : '',
         };
       })
       .filter(Boolean);
