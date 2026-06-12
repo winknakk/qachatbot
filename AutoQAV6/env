@@ -1,0 +1,69 @@
+# ── Google Sheets ─────────────────────────────────────────────
+GOOGLE_DOCUMENT_ID=1uFs7I-OKwaU41foNtnsYpnShLJG2HCqDnXL3agECtLw
+GOOGLE_SERVICE_ACCOUNT_KEY_PATH=./credentials/google-service-account.json
+
+DOC_COL_TEST_ID_HEADER=Test case ID
+DOC_COL_TEST_STEPS_HEADER=Test Steps
+DOC_COL_EXPECTED_HEADER=Expected Result
+DOC_COL_ACTUAL_HEADER=Actual Result
+DOC_COL_STATUS_HEADER=Status
+DOC_COL_REMARK_HEADER=Remark
+DOC_SCREENSHOT_IMAGE_WIDTH_PT=280
+
+# ── ไฟล์ต้นฉบับสำหรับอ่านข้อมูล (READ) ──
+GOOGLE_SPREADSHEET_ID=1RaRKgxmyaVZlEOJIjgA8Keg8UITDdAVSvBvHIEdHlYo
+GOOGLE_SHEET_NAME=ด้านงานบริหารบุคคล (In_management)
+
+# ── ไฟล์ปลายทางสำหรับอัพผลลัพธ์ลงไป (WRITE) ──
+TARGET_GOOGLE_SPREADSHEET_ID=1wZZ37w1lkqdeWJutDBsuOToubaWR6_uBoj09z27Y_OM
+TARGET_GOOGLE_SHEET_NAME=ด้านงานบริหารบุคคล (In_management)
+
+SHEET_COL_TEST_ID=A
+SHEET_COL_QUESTION=B
+SHEET_COL_EXPECTED=C
+SHEET_COL_ACTUAL=D
+SHEET_COL_Expected_Answer=E
+SHEET_COL_STATUS=F
+SHEET_COL_TIMESTAMP=G
+SHEET_COL_SCREENSHOT=H
+SHEET_DATA_START_ROW=2
+
+# ── Chatbot ───────────────────────────────────────────────────
+CHATBOT_URL=https://uat-promptx.treasury.go.th/demo_internal/
+CHATBOT_IFRAME_SELECTOR=iframe[src*="index_example.html"]
+CHATBOT_TOGGLE_SELECTOR=.pmx-chat-head
+CHATBOT_INPUT_SELECTOR=textarea#message-input
+CHATBOT_SEND_SELECTOR=button.pmx-message-inputaction-button
+CHATBOT_RESPONSE_SELECTOR=article.pmx-message-item--other:not(.pmx-message-item--initial) .pmx-message-item__text
+CHATBOT_EXPAND_SELECTOR=button[title="Expand to fullscreen"]
+
+# ── Transport Mode (v6) ───────────────────────────────────────
+TRANSPORT_MODE=webhook
+
+# ── Webhook API ──────────────────────────────────────────────
+WEBHOOK_ENABLED=true
+WEBHOOK_URL=https://uat-wf.treasury.go.th/api/v1/webhooks/Ixj8aFf6UdqGWnetyZTe6/sync
+WEBHOOK_METHOD=POST
+WEBHOOK_AUTH_TYPE=none
+WEBHOOK_QUESTION_FIELD=question
+WEBHOOK_RESPONSE_FIELD=answer
+
+# ── Timing ────────────────────────────────────────────────────
+RESPONSE_WAIT_TIMEOUT=40000
+RESPONSE_FINISH_TIMEOUT=120000
+RESPONSE_POLL_INTERVAL=1500
+RESPONSE_STABLE_DURATION=4000
+MAX_RETRIES=3
+RETRY_DELAY=3000
+SCREENSHOT_DELAY=1000
+
+# ── Browser ───────────────────────────────────────────────────
+HEADLESS=false
+SLOW_MO=0
+VIEWPORT_WIDTH=1280
+VIEWPORT_HEIGHT=800
+
+# ── Paths ─────────────────────────────────────────────────────
+SCREENSHOTS_DIR=./screenshots
+LOGS_DIR=./logs
+REPORTS_DIR=./reports
